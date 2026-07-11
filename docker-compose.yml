@@ -1,0 +1,13 @@
+services:
+  pos:
+    build: .
+    container_name: servrail-pos
+    ports:
+      - "3000:3000"
+    # Mount .env read-only; Next.js loads it at runtime and parses quotes correctly
+    # (more robust than passing env_file straight to the container). It holds the
+    # persistent Neon demo-branch DATABASE_URL / DIRECT_URL, AUTH_SECRET, and
+    # AUTH_TRUST_HOST. .env is gitignored and never baked into the image.
+    volumes:
+      - ./.env:/app/.env:ro
+    restart: unless-stopped

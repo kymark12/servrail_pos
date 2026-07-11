@@ -23,6 +23,9 @@ yarn-error.log*
 # env files
 .env*
 
+# local-only demo/test credentials — never commit (repo may be public)
+DEMO_CREDENTIALS.md
+
 # vercel
 .vercel
 
