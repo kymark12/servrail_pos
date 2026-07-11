@@ -1,0 +1,267 @@
+// ServRail POS — Prisma schema
+//
+// Runs against the SHARED Neon database used by the DSS app and the back-office.
+// Ownership rules (mirrors the back-office convention):
+//   • DSS owns the primary migration history for the shared DB.
+//   • This app applies ONLY its own tables via prisma/apply-schema.ts (idempotent
+//     DDL over DIRECT_URL). It must NEVER run `prisma migrate` against this DB.
+//
+// Models below fall into three groups:
+//   1. Re-declared, READ-ONLY shared/identity models (owned elsewhere) — declared
+//      so POS's Prisma client can read them. Fields mirror the source schemas.
+//   2. Re-declared, READ-WRITE DSS-owned sales models (SalesUpload / SalesRecord) —
+//      POS writes these so POS sales land on the DSS dashboard. Fields mirror DSS
+//      exactly; the only change is the added `POS` value on UploadSource.
+//   3. POS-OWNED domain models (Staff, MenuCategory, MenuItem, Order, OrderItem,
+//      PrinterConfig) — created and owned by this app via apply-schema.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 1 — shared identity / tenant core (re-declared; owned by DSS/back-office)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  timezone  String   @default("Asia/Manila")
+  currency  String   @default("PHP")
+  createdAt DateTime @default(now())
+
+  // Shared relations POS reads:
+  memberships  Membership[]
+  entitlements Entitlement[]
+
+  // DSS-owned sales relations POS writes:
+  uploads SalesUpload[]
+  records SalesRecord[]
+
+  // POS-owned relations:
+  staff          Staff[]
+  menuCategories MenuCategory[]
+  orders         Order[]
+  printerConfigs PrinterConfig[]
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+}
+
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  businessId String
+  role       Role     @default(STAFF)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+}
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+// Product catalog + per-tenant entitlement — owned by the back-office. POS reads
+// these to gate access (an ACTIVE entitlement for key = "pos").
+model Product {
+  id           String        @id @default(cuid())
+  key          String        @unique
+  name         String
+  description  String?
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  entitlements Entitlement[]
+}
+
+model Entitlement {
+  id           String            @id @default(cuid())
+  businessId   String
+  productId    String
+  status       EntitlementStatus @default(ACTIVE)
+  enabledAt    DateTime          @default(now())
+  terminatedAt DateTime?
+  updatedAt    DateTime          @updatedAt
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, productId])
+  @@index([businessId])
+  @@index([productId])
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 2 — DSS-owned sales tables (re-declared read-write). Mirror DSS exactly.
+// The POS sync path creates one SalesUpload (source = POS) per batch and one
+// SalesRecord per OrderItem, so POS sales appear on the DSS dashboard.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SalesUpload {
+  id         String        @id @default(cuid())
+  businessId String
+  fileName   String
+  fileUrl    String?
+  source     UploadSource  @default(FILE)
+  status     UploadStatus  @default(PENDING)
+  rowCount   Int           @default(0)
+  uploadedAt DateTime      @default(now())
+  business   Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  records    SalesRecord[]
+
+  @@index([businessId])
+}
+
+enum UploadSource {
+  FILE
+  MANUAL
+  POS // added by POS — DSS owns this enum; see apply-schema.ts + the DSS migration note
+}
+
+enum UploadStatus {
+  PENDING
+  MAPPED
+  COMMITTED
+  FAILED
+}
+
+model SalesRecord {
+  id            String      @id @default(cuid())
+  businessId    String
+  uploadId      String
+  saleDate      DateTime
+  itemName      String
+  category      String?
+  quantity      Int
+  unitPrice     Decimal     @db.Decimal(12, 2)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  paymentMethod String?
+  createdAt     DateTime    @default(now())
+  business      Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  upload        SalesUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, saleDate])
+  @@index([uploadId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 3 — POS-owned domain models (created via apply-schema.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POS-specific quick-login identity, distinct from the back-office User account.
+// A cashier needs a 5-second PIN switch, not an email/password sign-in.
+model Staff {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  pinHash    String // bcrypt hash of the device-local PIN
+  role       StaffRole @default(CASHIER)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@index([businessId])
+}
+
+enum StaffRole {
+  CASHIER
+  MANAGER
+}
+
+model MenuCategory {
+  id         String     @id @default(cuid())
+  businessId String
+  name       String
+  sortOrder  Int        @default(0)
+  createdAt  DateTime   @default(now())
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items      MenuItem[]
+
+  @@index([businessId])
+}
+
+model MenuItem {
+  id         String       @id @default(cuid())
+  businessId String // denormalized for direct tenant-scoped queries
+  categoryId String
+  name       String
+  price      Decimal      @db.Decimal(12, 2)
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  category   MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([categoryId])
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  businessId   String
+  staffId      String
+  localOrderId String // client-generated UUID, set while offline, for idempotent sync
+  status       OrderStatus @default(QUEUED)
+  createdAt    DateTime    @default(now())
+  syncedAt     DateTime?
+  business     Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staff        Staff       @relation(fields: [staffId], references: [id])
+  items        OrderItem[]
+
+  @@unique([businessId, localOrderId]) // prevents double-sync on retry
+  @@index([businessId, status])
+}
+
+enum OrderStatus {
+  QUEUED // captured locally, not yet synced
+  SYNCED // synced to server, SalesRecord created
+  FAILED // sync attempted, rejected (needs manual review)
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  menuItemId String // reference only; not a live FK — the sale is a snapshot
+  itemName   String // snapshot at time of sale (feeds SalesRecord.itemName)
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12, 2) // snapshot at time of sale
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model PrinterConfig {
+  id              String            @id @default(cuid())
+  businessId      String
+  connectionType  PrinterConnection @default(USB)
+  vendorProductId String? // USB vendor/product ID for reconnect matching
+  paperWidthMm    Int               @default(58)
+  lastPairedAt    DateTime?
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId]) // single till per business for the v1 prototype
+}
+
+enum PrinterConnection {
+  USB
+  BLUETOOTH
+}
