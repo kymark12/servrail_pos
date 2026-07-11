@@ -8,8 +8,10 @@ export default NextAuth(authConfig).auth;
 
 export const config = {
   matcher: [
-    // Protect everything except the sign-in page, auth API, the till PIN entry,
-    // the PWA shell assets, and static assets.
-    "/((?!sign-in|not-enabled|pos|manifest.webmanifest|sw.js|api/auth|_next/static|_next/image|favicon.ico).*)",
+    // Protect everything except the sign-in page, the not-enabled notice, the auth
+    // API, and static assets. The till (/pos) IS protected: for this online-first
+    // build it runs behind the owner session; a device-local PIN then selects the
+    // active cashier. (Offline-first PIN-only entry comes with the PWA pass.)
+    "/((?!sign-in|not-enabled|api/auth|_next/static|_next/image|favicon.ico).*)",
   ],
 };

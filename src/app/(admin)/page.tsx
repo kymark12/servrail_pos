@@ -48,9 +48,14 @@ export default async function AdminHome() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{business.name}</h1>
-        <p className="text-muted-foreground">Point of Sale — setup &amp; configuration</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{business.name}</h1>
+          <p className="text-muted-foreground">Point of Sale — setup &amp; configuration</p>
+        </div>
+        <Link href="/pos" className={buttonVariants({ size: "lg" })}>
+          Open till →
+        </Link>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
