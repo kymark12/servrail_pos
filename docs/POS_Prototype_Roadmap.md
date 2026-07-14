@@ -257,6 +257,8 @@ This means the DSS build already in progress isn't parallel work — it's the re
 - Receipt template should reserve a line for a Permit to Use (PTU) reference / invoice sequence number even though accreditation isn't in scope for the prototype — cheaper to design the field in now than retrofit the receipt format later.
 - This is a factual summary, not tax advice. Any client-facing default (e.g., ever going receipt-optional) should be confirmed with that client's own accountant before it ships.
 
+**Scope reminder — accreditation applies to POS only, not the other 9 products:** BIR's CRM/POS accreditation (RR 11-2004: PTU, decals, per-device fees) and CAS/CBA registration are triggered specifically by (a) generating official receipts/invoices, or (b) serving as a business's official books of accounts. Daily Sales Summary, Inventory Tracker, Expense Tracker, Menu Cost Calculator, Supplier Order Generator, Reservation Bot, Feedback Collector, Loyalty Points, and Social Media Auto-Scheduler don't issue receipts and aren't a client's system of record — none of them need BIR accreditation on their own. The only exception to watch: if a client starts treating Daily Sales Summary or Expense Tracker as their *actual* bookkeeping system rather than a reporting layer fed by data booked elsewhere, that specific product could tip into CAS registration territory. As long as those stay downstream/reporting views, they're clear. POS is the one product in the lineup where accreditation is a hard gate before real transactions.
+
 ---
 
 ## 10. Build Phases
