@@ -77,8 +77,14 @@ To run in a container and reach it from a phone/tablet over your tailnet:
 ```bash
 docker compose up --build      # http://localhost:3000
 ```
-Full runbook (Tailscale HTTPS, opening it on a Fold phone / iPad, iOS WebUSB caveat):
-[`docs/RUN_LOCAL_DEMO.md`](docs/RUN_LOCAL_DEMO.md).
+Reaching it from another device needs **`AUTH_URL`** set to the URL that device
+actually opens (the Tailscale HTTPS hostname) — `docker-compose.yml` pins it, and
+you override it per machine. Without it next-auth redirects sign-in to a dead
+`localhost`, which on an iPad is the iPad itself. The app also installs to the
+home screen as a full-screen PWA (Safari only on iPadOS; requires HTTPS).
+
+Full runbook (Tailscale HTTPS, `AUTH_URL`, home-screen install, opening it on a Fold
+phone / iPad, iOS WebUSB caveat): [`docs/RUN_LOCAL_DEMO.md`](docs/RUN_LOCAL_DEMO.md).
 
 ## Scripts
 

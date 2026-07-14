@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Delete, Minus, Plus, Trash2, X, ShoppingCart } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, Delete, Minus, Plus, Trash2, X, ShoppingCart } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/format";
 import {
@@ -141,6 +142,15 @@ function PinPad({
       >
         {pending ? "Checking…" : "Enter"}
       </Button>
+
+      {/* Clocking out lands here, so this is the till's real exit. */}
+      <Link
+        href="/"
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
+      >
+        <ArrowLeft className="size-4" />
+        Back to dashboard
+      </Link>
     </div>
   );
 }
@@ -225,9 +235,20 @@ function Register({
     <div className="flex h-screen flex-col bg-muted/20">
       {/* Header */}
       <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-2">
-        <div>
-          <p className="text-sm font-semibold leading-tight">{businessName}</p>
-          <p className="text-xs text-muted-foreground">Cashier: {staff.name}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          {/* The till is a standalone route (no AdminNav), and in a home-screen PWA
+              there is no URL bar — without this the owner cannot leave the till. */}
+          <Link
+            href="/"
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
+          >
+            <ArrowLeft className="size-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </Link>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight">{businessName}</p>
+            <p className="text-xs text-muted-foreground">Cashier: {staff.name}</p>
+          </div>
         </div>
         <Button
           variant="ghost"

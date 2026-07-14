@@ -25,22 +25,46 @@ detached with `docker compose up --build -d` (logs: `docker compose logs -f`).
 
 ## 2. Serve it over Tailscale (HTTPS)
 Use **Tailscale Serve** — it fronts the app with a real HTTPS cert on your
-machine's MagicDNS name. HTTPS matters: in production mode the login uses secure
-cookies, which won't stick over plain `http://<ip>:3000`.
+machine's MagicDNS name. Don't skip this and use the raw `http://100.x.x.x:3000`
+address: HTTPS is what makes the page a **secure context**, and without one,
+service workers refuse to register (so no PWA / offline) and the login's secure
+cookies won't stick.
 
 One-time: in the [Tailscale admin console](https://login.tailscale.com/admin/dns),
 enable **MagicDNS** and **HTTPS Certificates**.
 
 ```bash
 # Proxy the tailnet HTTPS endpoint to the local app:
-tailscale serve --bg 3000
+tailscale serve --bg --https=443 http://127.0.0.1:3000
 
-# See the public-to-your-tailnet URL:
+# See the URL (tailnet-only — NOT the public internet):
 tailscale serve status
 ```
-That prints something like `https://your-mac.your-tailnet.ts.net`.
+That prints something like `https://your-mac.your-tailnet.ts.net`. Stop it later with
+`tailscale serve reset`.
 
-Stop serving later with: `tailscale serve reset`.
+> **The serve config can drop** (seen after restarting the Tailscale client). If the
+> `.ts.net` URL suddenly stops loading while `docker compose ps` shows the app up and
+> `curl http://localhost:3000` works, that's this. Check `tailscale serve status` —
+> if it says *No serve config*, just re-run the command above.
+
+> **Only devices on your tailnet can reach this.** A `100.x` address and a
+> `*.ts.net` Serve URL are private. To reach it from a device that *can't* install
+> Tailscale you'd need `tailscale funnel`, which publishes it to the open
+> internet — don't, while `DEMO_CREDENTIALS.md` is live.
+
+### `AUTH_URL` must match the URL you actually open
+next-auth v5 does **not** work out the origin from the request. With no `AUTH_URL`
+it falls back to a hardcoded `http://localhost:3000` and issues **absolute**
+redirects there — so on an iPad, sign-in bounces to the iPad itself and dies.
+`docker-compose.yml` therefore pins `AUTH_URL`. On a different machine, override it
+with your own Serve hostname:
+
+```bash
+AUTH_URL=https://your-mac.your-tailnet.ts.net docker compose up -d --build
+```
+Symptom that you got this wrong: you land on `/sign-in`, log in, and get thrown to a
+dead `localhost` URL.
 
 ## 3. Open it on the Fold and the iPad
 1. Open the **Tailscale app** on the device and make sure it's connected to the
@@ -53,8 +77,27 @@ Stop serving later with: `tailscale serve reset`.
 3. Sign in with the owner login, tap **Open till →**, and enter a cashier PIN.
    Credentials are in `DEMO_CREDENTIALS.md`.
 
-Tip: on either device, use the browser's **Add to Home Screen** for an app-like,
-full-screen launch during the demo.
+## 4. Install the till as a home-screen app
+The app ships a web manifest (`src/app/manifest.ts`) and generated icons
+(`src/app/icon.tsx`, `src/app/apple-icon.tsx`), so it installs as a full-screen app
+with no browser chrome — the right look for a demo, and the groundwork for the
+offline-first PWA phase.
+
+**On iPad — you must use Safari, not Chrome.** On iPadOS only Safari can create a
+real standalone web app; Chrome only makes a shortcut that reopens the browser.
+
+1. Open the `https://….ts.net` URL in **Safari**.
+2. Navigate to the page you want the icon to open — **`/pos`** for the till.
+   iOS ignores the manifest's `start_url` and uses whatever page is on screen.
+3. **Share → Add to Home Screen → Add.**
+4. Launch it from the home screen: it opens full-screen, no address bar.
+
+Requires the **HTTPS** Serve URL from step 2. Over plain `http://100.x.x.x:3000`
+iOS will still add an icon, but you get no standalone mode and no service worker.
+
+Because the installed app has no address bar, the till has a **Dashboard** link in
+its header (and a **Back to dashboard** link on the PIN pad) — otherwise there is
+no way out of `/pos`.
 
 ## iPad — what works and what doesn't
 - **Works now:** the entire demo — browsing the menu, cart, cash checkout, and

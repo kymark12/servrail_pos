@@ -10,4 +10,18 @@ services:
     # AUTH_TRUST_HOST. .env is gitignored and never baked into the image.
     volumes:
       - ./.env:/app/.env:ro
+    # next-auth v5 does NOT derive its origin from the request Host here: with no
+    # AUTH_URL it silently falls back to http://localhost:3000 and issues ABSOLUTE
+    # redirects there. On any other device (iPad over Tailscale) "localhost" is that
+    # device itself, so sign-in dead-ends. AUTH_URL must therefore name the origin
+    # clients actually use — the Tailscale Serve HTTPS hostname, which is also what
+    # makes the page a secure context (service workers / PWA install). Override for a
+    # different machine. Set it in .env (gitignored — Compose reads that file for
+    # substitution), NOT here: this repo is public and the hostname names your
+    # tailnet. Falls back to localhost for a plain same-machine run.
+    #   AUTH_URL=https://my-box.tailXXXX.ts.net
+    # Neither value is a secret; secrets stay in the mounted .env.
+    environment:
+      - AUTH_TRUST_HOST=true
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
     restart: unless-stopped
