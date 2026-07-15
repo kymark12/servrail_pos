@@ -17,10 +17,10 @@ export function AdminNav({ businessName }: { businessName: string }) {
   const pathname = usePathname();
 
   return (
-    <header className="border-b bg-background">
+    <header className="bg-sidebar text-sidebar-foreground">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
-        <Link href="/" className="font-semibold">
-          ServRail <span className="text-muted-foreground">POS</span>
+        <Link href="/" className="font-heading text-lg font-semibold">
+          ServRail <span className="text-sidebar-foreground/60">POS</span>
         </Link>
         <nav className="flex items-center gap-1">
           {links.map((link) => {
@@ -35,8 +35,8 @@ export function AdminNav({ businessName }: { businessName: string }) {
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm transition-colors",
                   active
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground",
                 )}
               >
                 {link.label}
@@ -45,12 +45,13 @@ export function AdminNav({ businessName }: { businessName: string }) {
           })}
         </nav>
         <div className="ml-auto flex items-center gap-3">
-          <span className="hidden text-sm text-muted-foreground sm:inline">
+          <span className="hidden text-sm text-sidebar-foreground/70 sm:inline">
             {businessName}
           </span>
           <Button
             variant="ghost"
             size="sm"
+            className="text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
             onClick={() => signOut({ callbackUrl: "/sign-in" })}
           >
             Sign out

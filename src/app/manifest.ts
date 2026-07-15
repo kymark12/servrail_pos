@@ -12,8 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Touch-first point of sale for ServRail businesses",
     start_url: "/pos",
     display: "standalone",
-    background_color: "#ffffff",
-    theme_color: "#ffffff",
+    background_color: "#f4eee3",
+    theme_color: "#6e2e26",
     icons: [
       { src: "/icon", sizes: "32x32", type: "image/png" },
       { src: "/apple-icon", sizes: "180x180", type: "image/png" },
