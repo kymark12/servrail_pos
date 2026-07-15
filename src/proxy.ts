@@ -17,6 +17,6 @@ export const config = {
     // when installing to the home screen, and a gated manifest returns the sign-in
     // page instead — the install then gets no icon and no standalone mode. They
     // expose nothing but the app's name and logo.
-    "/((?!sign-in|not-enabled|api/auth|manifest.webmanifest|icon|apple-icon|_next/static|_next/image|favicon.ico).*)",
+    "/((?!sign-in|not-enabled|api/auth|manifest.webmanifest|icon|apple-icon|sw.js|_next/static|_next/image|favicon.ico).*)",
   ],
 };
