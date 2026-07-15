@@ -26,6 +26,13 @@ yarn-error.log*
 # local-only demo/test credentials — never commit (repo may be public)
 DEMO_CREDENTIALS.md
 
+# Docs are local-only by default (business/planning/compliance), EXCEPT the
+# development docs explicitly re-included below. Ignore the folder's *contents*
+# (docs/*, not docs/) so these negations can take effect.
+docs/*
+!docs/RUN_LOCAL_DEMO.md
+!docs/POS_Prototype_Roadmap.md
+
 # vercel
 .vercel
 
