@@ -234,25 +234,29 @@ function Register({
   return (
     <div className="flex h-screen flex-col bg-muted/20">
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-2">
+      <header className="flex items-center justify-between gap-3 bg-sidebar px-4 py-2 text-sidebar-foreground">
         <div className="flex min-w-0 items-center gap-2">
           {/* The till is a standalone route (no AdminNav), and in a home-screen PWA
               there is no URL bar — without this the owner cannot leave the till. */}
           <Link
             href="/"
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "gap-1.5 text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground",
+            )}
           >
             <ArrowLeft className="size-4" />
             <span className="hidden sm:inline">Dashboard</span>
           </Link>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-tight">{businessName}</p>
-            <p className="text-xs text-muted-foreground">Cashier: {staff.name}</p>
+            <p className="text-xs text-sidebar-foreground/70">Cashier: {staff.name}</p>
           </div>
         </div>
         <Button
           variant="ghost"
           size="sm"
+          className="text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
           onClick={() => startTransition(async () => { await clockOut(); onClockOut(); })}
         >
           Clock out
