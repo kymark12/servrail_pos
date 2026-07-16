@@ -7,6 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest --project unit",
     "db:generate": "prisma generate",
     "db:apply": "tsx prisma/apply-schema.ts",
     "db:studio": "prisma studio"
@@ -41,9 +45,13 @@
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.10.6",
     "serwist": "^9.5.11",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.10"
   }
 }

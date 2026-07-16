@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { queuedCount } from "./db";
 import { syncQueue } from "./sync";
 
@@ -12,6 +12,18 @@ export type SyncState = {
   syncing: boolean;
 };
 
+// Online status is an external browser signal, so read it through
+// useSyncExternalStore: no setState-in-effect, and SSR gets a stable `true`
+// snapshot (navigator is undefined on the server).
+function subscribeOnline(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
+
 /**
  * Foreground sync driver for the till: flushes the queue on mount, on reconnect,
  * and on an interval while online; tracks online/queued/syncing for the header
@@ -22,7 +34,11 @@ export function useOrderSync(): SyncState & {
   refresh: () => Promise<void>;
   sync: () => Promise<void>;
 } {
-  const [online, setOnline] = useState(true);
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
   const [queued, setQueued] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
@@ -41,16 +57,14 @@ export function useOrderSync(): SyncState & {
   }, [refresh]);
 
   useEffect(() => {
-    setOnline(navigator.onLine);
-    void sync();
+    // Initial flush, deferred one tick so the syncing flag doesn't toggle
+    // synchronously during the effect (that would cascade a render on mount).
+    const initial = window.setTimeout(() => void sync(), 0);
 
-    const onOnline = () => {
-      setOnline(true);
-      void sync();
-    };
-    const onOffline = () => setOnline(false);
+    // Flush the queue the moment we reconnect (the display value is handled by
+    // useSyncExternalStore above; this listener only triggers the side-effect).
+    const onOnline = () => void sync();
     window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
 
     const id = window.setInterval(() => {
       if (navigator.onLine) void sync();
@@ -58,8 +72,8 @@ export function useOrderSync(): SyncState & {
     }, INTERVAL_MS);
 
     return () => {
+      window.clearTimeout(initial);
       window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
       window.clearInterval(id);
     };
   }, [sync, refresh]);
