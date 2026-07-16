@@ -82,8 +82,13 @@ export async function cacheStaff(
 export async function getSession(): Promise<PosSession | null> {
   const row = await db().session.get("active");
   if (!row) return null;
-  const { id: _id, ...session } = row;
-  return session;
+  // Drop the fixed "active" row id; return just the cashier session.
+  return {
+    staffId: row.staffId,
+    staffName: row.staffName,
+    role: row.role,
+    businessId: row.businessId,
+  };
 }
 export async function setSession(session: PosSession): Promise<void> {
   await db().session.put({ ...session, id: "active" });
