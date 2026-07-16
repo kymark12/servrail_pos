@@ -1,10 +1,11 @@
 import { requirePosEntitlement } from "@/lib/entitlement";
 import { prisma } from "@/lib/db";
-import { getActiveStaff } from "@/lib/pos-session";
 import { Till, type MenuData } from "@/components/pos/till";
+import type { StaffCredential } from "@/lib/pos/types";
 
-// Cashier till. Owner session + POS entitlement establish the business; a
-// device-local PIN then selects the active cashier.
+// Cashier till. Owner session + POS entitlement establish the business; the menu
+// and staff (incl. PIN hashes) are handed to the client so the till can clock in
+// and sell fully offline once it has loaded online at least once.
 export default async function PosPage() {
   const { business } = await requirePosEntitlement();
 
@@ -28,14 +29,27 @@ export default async function PosPage() {
       items: c.items.map((i) => ({ id: i.id, name: i.name, price: Number(i.price) })),
     }));
 
-  const activeStaff = await getActiveStaff(business.id);
+  // Only reachable by an authenticated owner with POS entitlement; the PIN hashes
+  // are cached client-side (IndexedDB) so clock-in works with no connectivity.
+  const staff = await prisma.staff.findMany({
+    where: { businessId: business.id, isActive: true },
+    select: { id: true, name: true, role: true, pinHash: true },
+  });
+  const staffCredentials: StaffCredential[] = staff.map((s) => ({
+    id: s.id,
+    businessId: business.id,
+    name: s.name,
+    role: s.role,
+    pinHash: s.pinHash,
+  }));
 
   return (
     <Till
+      businessId={business.id}
       businessName={business.name}
       currency={business.currency}
       menu={menu}
-      initialStaff={activeStaff}
+      staffCredentials={staffCredentials}
     />
   );
 }

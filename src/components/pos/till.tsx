@@ -1,50 +1,95 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Delete, Minus, Plus, Trash2, X, ShoppingCart } from "lucide-react";
+import { ArrowLeft, Delete, Minus, Plus, Trash2, X, ShoppingCart, Wifi, WifiOff } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/format";
+import { ServiceWorkerRegister } from "@/components/pos/sw-register";
+import { verifyPin } from "@/lib/pos/auth";
 import {
-  clockIn,
-  clockOut,
-  checkout,
-  type CheckoutResult,
-  type ReceiptLine,
-} from "@/app/pos/actions";
-import type { ActiveStaff } from "@/lib/pos-session";
+  cacheMenu,
+  cacheStaff,
+  clearSession,
+  getSession,
+  queueOrder,
+} from "@/lib/pos/db";
+import { useOrderSync } from "@/lib/pos/use-order-sync";
+import type {
+  LocalOrder,
+  MenuData,
+  MenuItem,
+  PosSession,
+  StaffCredential,
+} from "@/lib/pos/types";
 
-export type MenuItem = { id: string; name: string; price: number };
-export type MenuData = { id: string; name: string; items: MenuItem[] }[];
+export type { MenuData, MenuItem } from "@/lib/pos/types";
 
 type CartLine = { item: MenuItem; qty: number };
+type ReceiptLine = { name: string; quantity: number; lineTotal: number };
+type ReceiptData = {
+  orderId: string;
+  staffName: string;
+  soldAt: string;
+  total: number;
+  lines: ReceiptLine[];
+};
 
 export function Till({
+  businessId,
   businessName,
   currency,
   menu,
-  initialStaff,
+  staffCredentials,
 }: {
+  businessId: string;
   businessName: string;
   currency: string;
   menu: MenuData;
-  initialStaff: ActiveStaff | null;
+  staffCredentials: StaffCredential[];
 }) {
-  const [staff, setStaff] = useState<ActiveStaff | null>(initialStaff);
+  // `undefined` = still loading the local session; null = clocked out.
+  const [staff, setStaff] = useState<PosSession | null | undefined>(undefined);
 
-  if (!staff) {
-    return <PinPad businessName={businessName} onClockIn={setStaff} />;
-  }
+  // Cache the catalog + staff for offline use, then resolve who's on shift from
+  // the device-local session (survives reloads and works fully offline).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await Promise.all([
+        cacheMenu({ businessId, currency, categories: menu }),
+        cacheStaff(businessId, staffCredentials),
+      ]);
+      const session = await getSession();
+      if (alive) setStaff(session && session.businessId === businessId ? session : null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [businessId, currency, menu, staffCredentials]);
+
   return (
-    <Register
-      businessName={businessName}
-      currency={currency}
-      menu={menu}
-      staff={staff}
-      onClockOut={() => setStaff(null)}
-    />
+    <>
+      <ServiceWorkerRegister />
+      {staff === undefined ? (
+        <div className="flex min-h-screen items-center justify-center bg-muted/30" />
+      ) : staff === null ? (
+        <PinPad businessName={businessName} onClockIn={setStaff} />
+      ) : (
+        <Register
+          businessId={businessId}
+          currency={currency}
+          menu={menu}
+          staff={staff}
+          onClockOut={async () => {
+            await clearSession();
+            setStaff(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -54,22 +99,23 @@ function PinPad({
   onClockIn,
 }: {
   businessName: string;
-  onClockIn: (s: ActiveStaff) => void;
+  onClockIn: (s: PosSession) => void;
 }) {
   const [pin, setPin] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
-  function submit(value: string) {
-    startTransition(async () => {
-      const res = await clockIn(value);
-      if (!res.ok) {
-        toast.error(res.error);
-        setPin("");
-        return;
-      }
-      toast.success(`Welcome, ${res.staff.name}`);
-      onClockIn(res.staff);
-    });
+  async function submit(value: string) {
+    setPending(true);
+    // Verified against locally-cached hashes, so clock-in works offline.
+    const session = await verifyPin(value);
+    setPending(false);
+    if (!session) {
+      toast.error("PIN not recognized.");
+      setPin("");
+      return;
+    }
+    toast.success(`Welcome, ${session.staffName}`);
+    onClockIn(session);
   }
 
   function press(digit: string) {
@@ -155,25 +201,63 @@ function PinPad({
   );
 }
 
+// ── Sync status pill ──────────────────────────────────────────────────────────
+function SyncBadge({
+  online,
+  queued,
+  syncing,
+}: {
+  online: boolean;
+  queued: number;
+  syncing: boolean;
+}) {
+  const offline = !online;
+  const label = syncing
+    ? "Syncing…"
+    : offline
+      ? queued > 0
+        ? `Offline · ${queued} queued`
+        : "Offline"
+      : queued > 0
+        ? `${queued} to sync`
+        : "All synced";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+        offline || queued > 0
+          ? "bg-white/15 text-sidebar-foreground"
+          : "bg-white/10 text-sidebar-foreground/80",
+      )}
+      title={offline ? "No connection — sales are saved on this device" : undefined}
+    >
+      {offline ? <WifiOff className="size-3.5" /> : <Wifi className="size-3.5" />}
+      {label}
+    </span>
+  );
+}
+
 // ── Register (selling screen) ─────────────────────────────────────────────────
 function Register({
-  businessName,
+  businessId,
   currency,
   menu,
   staff,
   onClockOut,
 }: {
-  businessName: string;
+  businessId: string;
   currency: string;
   menu: MenuData;
-  staff: ActiveStaff;
-  onClockOut: () => void;
+  staff: PosSession;
+  onClockOut: () => void | Promise<void>;
 }) {
   const [activeCat, setActiveCat] = useState(menu[0]?.id ?? "");
   const [cart, setCart] = useState<Map<string, CartLine>>(new Map());
   const [cartOpen, setCartOpen] = useState(false);
-  const [receipt, setReceipt] = useState<Extract<CheckoutResult, { ok: true }> | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [pending, startTransition] = useTransition();
+  const { online, queued, syncing, refresh, sync } = useOrderSync();
 
   const category = menu.find((c) => c.id === activeCat) ?? menu[0];
 
@@ -212,20 +296,49 @@ function Register({
     setCart(new Map());
   }
 
+  // Local-first checkout: write the sale to IndexedDB and show the receipt
+  // immediately — no network needed. A background sync flushes it to the server.
   function charge() {
-    const lines = Array.from(cart.values()).map((l) => ({
+    const cartLines = Array.from(cart.values());
+    if (cartLines.length === 0) return;
+
+    const lines = cartLines.map((l) => ({
       menuItemId: l.item.id,
+      itemName: l.item.name,
       quantity: l.qty,
+      unitPrice: l.item.price,
     }));
+    const localOrderId = crypto.randomUUID();
+    const soldAt = new Date().toISOString();
+    const order: LocalOrder = {
+      localOrderId,
+      businessId,
+      staffId: staff.staffId,
+      staffName: staff.staffName,
+      soldAt,
+      currency,
+      total,
+      lines,
+      status: "queued",
+    };
+
     startTransition(async () => {
-      const res = await checkout({ lines });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setReceipt(res);
+      await queueOrder(order);
+      setReceipt({
+        orderId: localOrderId,
+        staffName: staff.staffName,
+        soldAt,
+        total,
+        lines: lines.map((l) => ({
+          name: l.itemName,
+          quantity: l.quantity,
+          lineTotal: l.unitPrice * l.quantity,
+        })),
+      });
       clearCart();
       setCartOpen(false);
+      await refresh();
+      void sync(); // best-effort immediate push; retried on interval if offline
     });
   }
 
@@ -249,18 +362,20 @@ function Register({
             <span className="hidden sm:inline">Dashboard</span>
           </Link>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold leading-tight">{businessName}</p>
-            <p className="text-xs text-sidebar-foreground/70">Cashier: {staff.name}</p>
+            <p className="truncate text-sm font-semibold leading-tight">Cashier: {staff.staffName}</p>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
-          onClick={() => startTransition(async () => { await clockOut(); onClockOut(); })}
-        >
-          Clock out
-        </Button>
+        <div className="flex items-center gap-2">
+          <SyncBadge online={online} queued={queued} syncing={syncing} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-sidebar-foreground hover:bg-white/10 hover:text-sidebar-foreground"
+            onClick={() => void onClockOut()}
+          >
+            Clock out
+          </Button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -439,7 +554,7 @@ function CartPanel({
           disabled={pending || lines.length === 0}
           onClick={onCharge}
         >
-          {pending ? "Processing…" : `Charge ${formatMoney(total, currency)} · Cash`}
+          {pending ? "Saving…" : `Charge ${formatMoney(total, currency)} · Cash`}
         </Button>
       </div>
     </div>
@@ -452,7 +567,7 @@ function Receipt({
   currency,
   onNewOrder,
 }: {
-  receipt: { orderId: string; staffName: string; soldAt: string; total: number; lines: ReceiptLine[] };
+  receipt: ReceiptData;
   currency: string;
   onNewOrder: () => void;
 }) {
